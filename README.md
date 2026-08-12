@@ -42,8 +42,8 @@ phenological cycles**), the framework:
 └───────────────────────────────┬──────────────────────────────────────┘
                                 ▼
 ┌────────────────────────── STAGE 2 · R / Stan ────────────────────────┐
-│ 02  GMM + MSNBurr mixture models (HMC-NUTS, RStan)  [production]     │
-│ 03  Skew-t benchmark (loads 02's posteriors)        [optional]       │
+│ 02  GMM + MSNBurr mixture models (HMC-NUTS, RStan)   [production]    │
+│ 03  Skew-t benchmark (loads 02's saved posteriors)   [optional]      │
 │ 04  posterior tables, diagnostics & combined PPC                     │
 │ 05  CHIRPS extraction within each cycle's biological window          │
 │ 06  proxy validation (Wilcoxon / Spearman) + cropping-calendar plots │
@@ -67,7 +67,7 @@ MSNBurr-RicePhenology/
 │   ├── README.md                    # provenance, Zenodo DOI, CHIRPS download script
 │   ├── raw/                         # Lamongan_NDVI_Raw_5pct_2022_2024.csv   [Zenodo]
 │   ├── processed/                   # 001–006 CSVs from the notebook         [Zenodo]
-│   ├── chirps/                      # chirps-v2.0.{2022..2025}.days_p05.nc   [download, not committed]
+│   ├── chirps/                      # chirps-v2.0.{2022..2025}.days_p05.nc   [download only]
 │   └── shapefiles/                  # BPS admin-2 boundaries (HDX)           [committed]
 │
 ├── gee/
@@ -82,16 +82,18 @@ MSNBurr-RicePhenology/
 │   │   ├── msn_burr.stan            # MSNBurr (proposed)
 │   │   └── skewt.stan               # Skew-t (computational benchmark)
 │   ├── scripts/
-│   │   ├── 02_run_gmm_msnburr.R     # production fits: GMM vs MSNBurr
-│   │   ├── 03_run_skewt_benchmark.R # Skew-t only; reuses 02's saved posteriors
-│   │   ├── 04_post_analysis.R       # Tables I–IV (diagnostics, LOO, CIs) + combined PPC
-│   │   ├── 05_extract_chirps.R      # offline NetCDF extraction per biological window
-│   │   └── 06_proxy_validation.R    # Wilcoxon/Spearman + Figs. 6–7
+│   │   ├── 02_run_gmm_msnburr.R     # production fits: GMM + MSNBurr, pruning,
+│   │   │                            #   traceplots, PPC, clustering CSV
+│   │   ├── 03_run_skewt_benchmark.R # Skew-t only (100 iterations); reuses 02's RDS
+│   │   ├── 04_post_analysis.R       # convergence/LOO/CI tables + combined PPC
+│   │   ├── 05_extract_chirps.R      # offline NetCDF + terra extraction per cycle
+│   │   └── 06_proxy_validation.R    # Wilcoxon/Spearman statistics + Figs. 6–7
 │   └── outputs/
 │       ├── fits/                    # fit_{gmm,msnburr}_pruned_*.rds  [gitignored → Zenodo]
 │       ├── traceplots/              # traceplot_{gmm,msnburr}_*.png
 │       ├── ppc/                     # ppc_{gmm,msnburr}_*.png, ppc_combined_*.png
-│       └── clustering/              # clustering_results_*.csv, *_with_skewt_*.csv,
+│       └── clustering/              # clustering_results_*.csv,
+│                                    #   clustering_results_with_skewt_*.csv,
 │                                    #   clustering_with_chirps_validation_FINAL.csv
 │
 ├── figures/
@@ -105,19 +107,6 @@ MSNBurr-RicePhenology/
     ├── manuscript.pdf
     └── supplementary.pdf
 ```
-
-### Script provenance (original → revised)
-
-| Original local file | Revised repository name | Role |
-|---|---|---|
-| `Tesis.R` (= `Tesis (2).R`) | `r_analysis/scripts/02_run_gmm_msnburr.R` | Production HMC-NUTS fits: GMM + MSNBurr, pruning, traceplots, PPC, clustering CSV |
-| `Skewt.R` | `r_analysis/scripts/03_run_skewt_benchmark.R` | Skew-t benchmark (100 iterations); loads RDS from 02, no re-run of GMM/MSNBurr |
-| `Post_Analysis.R` | `r_analysis/scripts/04_post_analysis.R` | Convergence/LOO/CI tables from pruned RDS + combined PPC (Fig. 5 & Fig. S7) |
-| `CHIPRS.R` | `r_analysis/scripts/05_extract_chirps.R` | Offline CHIRPS (NetCDF + terra) aggregation within each cycle's window |
-| `Proxy Validation.R` | `r_analysis/scripts/06_proxy_validation.R` | Proxy validation statistics + Figs. 6–7 |
-
-Stan model files keep their original names (`normal.stan`, `msn_burr.stan`,
-`skewt.stan`) exactly as referenced by the scripts.
 
 ---
 
@@ -136,12 +125,11 @@ fraction) was drawn over the open-cropland frame, yielding **5,635 candidate
 locations**, of which **5,311** produced at least one valid phenological cycle
 (324 persistently bare/fallow pixels excluded).
 
-**Archiving policy.** Large intermediates (raw/processed CSVs, pruned posterior
-RDS ≈ 40 MB each, CHIRPS NetCDF) are **not committed to Git**: CSVs and RDS are
-archived on Zenodo (see `data/README.md` for the download script), and CHIRPS
-NetCDFs are re-downloadable from the official server via
-`data/chirps/download_chirps.sh`. Small derived artefacts (clustering CSVs,
-tables, figures) are committed.
+**Archiving policy.** Large artefacts are **not committed to Git**: the raw and
+processed CSVs and the pruned posterior RDS files (≈40 MB each) are archived on
+Zenodo (see `data/README.md` for the download script), and the CHIRPS NetCDF
+files are re-downloadable from the official server. Small derived artefacts
+(clustering CSVs, tables, figures) are committed.
 
 ---
 
@@ -173,7 +161,8 @@ Requires R ≥ 4.3 with a working C++ toolchain (RStan system requirements).
 ## 🚀 Running the Pipeline
 
 Run from the repository root. Each R script reads its configuration
-(`SCENARIO`, `K_CLUSTERS`) from the clearly marked config block at its top.
+(`SCENARIO`, `K_CLUSTERS`) from the clearly marked config block at its top;
+all outputs are written to `r_analysis/outputs/`.
 
 ```bash
 # Stage 1 — NDVI preprocessing & feature extraction (Python)
@@ -203,19 +192,19 @@ Rscript r_analysis/scripts/06_proxy_validation.R
 
 | Paper artefact | Produced by | Output file |
 |---|---|---|
-| Fig. 1 (study area) | notebook | `fig_1_study_area.png` |
-| Fig. 2 (retained locations) | notebook | `fig_2_retained_locations.png` |
-| Fig. 3 (segmentation example) | notebook | `fig_3_segmentation_example.png` |
-| Fig. 4 (marginal distributions) | notebook | `fig_4_marginal_distributions.png` |
+| Fig. 1 (study area) | `01` notebook | `lamongan_study_area.png` |
+| Fig. 2 (sampled locations) | `01` notebook | `lamongan_points_only.png` |
+| Fig. 3 (segmentation example) | `01` notebook | `fig_3_segmentation_example.png` |
+| Fig. 4 (marginal distributions) | `01` notebook | `fig_4_marginal_distributions.png` |
 | Fig. 5 (combined PPC, K=3) | `04_post_analysis.R` | `ppc_combined_*_K3_*.png` |
 | Fig. 6 (proxy validation) | `06_proxy_validation.R` | `proxy_validation_IEEE.png` |
 | Fig. 7 (SOS/EOS dynamics) | `06_proxy_validation.R` | `combined_trend_wide_IEEE.png` |
-| Fig. S1–S6 | notebook | `fig_S1…S6_*.png` |
+| Fig. S1–S6 | `01` notebook | `fig_S1…S6_*.png` |
 | Fig. S7 (combined PPC, K=2) | `04_post_analysis.R` | `ppc_combined_*_K2_*.png` |
-| Table I (HMC-NUTS config) | documented in scripts & README | — |
+| Table I (HMC-NUTS config) | documented in scripts & this README | — |
 | Table II (K=3 agronomic estimates) | `04_post_analysis.R` | `results/tables/` |
 | Table III (rainfall comparison) | `06_proxy_validation.R` | `results/tables/` |
-| Table S1 (extraction parameters) | notebook config | `results/tables/` |
+| Table S1 (extraction parameters) | `01` notebook config | `results/tables/` |
 | Table S2 (full model comparison) | `04_post_analysis.R` (all configs) | `results/tables/` |
 | Table S3 (K=2 estimates) | `04_post_analysis.R` | `results/tables/` |
 
